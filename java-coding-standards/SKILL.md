@@ -39,6 +39,13 @@ description: 编写、设计、修改或评审 Java / Spring Boot 代码时使�
 
 只使用项目 Java 版本正式支持的语法；不为 `record`、模式匹配或 `switch` 开启 preview、升级版本或改变契约。`Stream.toList()` 不保证元素不可变，也不等同于可修改列表。
 
+## CPS 变换：显式传递后续计算
+
+- CPS（Continuation-Passing Style，续延传递风格）把“返回结果后继续做什么”变成显式的 continuation 参数：`f(x) -> T` 变为 `fCps(x, next) -> R`，结果交给 `next`，而不是直接返回 `T`。
+- 仅在需要传递、组合或延迟执行后续流程时使用；普通同步计算仍优先直接返回，不为函数式外观增加回调层、闭包分配或通用 CPS 框架。
+- 保持原有求值顺序、副作用次数、异常传播和资源 / 事务边界；CPS 本身不等于异步，也不保证递归栈安全。
+- 涉及 CPS、回调组合或异步续接时，读取 [语言规范：CPS 变换](references/language.md#cps-变换continuation-passing-style)，按其中步骤实施并验证。
+
 ## 两个基准写法
 
 纯转换直接返回，不创建可变中间集合或单次转发方法：

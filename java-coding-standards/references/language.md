@@ -120,6 +120,41 @@ Integer status = request == null ? null : request.getStatus();
 - 重复分支、字段映射和校验通过函数参数化；只调用一次且没有命名价值的 lambda / helper 直接内联。
 - 用函数组合消除重复，不用函数接口包装本来更清楚的一行 `if`。
 
+## CPS 变换（Continuation-Passing Style）
+
+把剩余计算显式表示为 continuation；不要把 CPS 等同于回调 API、异步执行或性能优化。
+
+### 变换步骤
+
+1. 先确定直接风格的输入、返回值、求值顺序与副作用边界；只有确实需要组合后续流程时才变换。
+2. 将 `T f(A input)` 改写为 `<R> R fCps(A input, Function<T, R> next)`；把正常返回 `return value` 改为 `return next.apply(value)`。无结果的副作用回调才用 `Consumer<T>`；热点基本类型优先适配的专用函数接口，避免装箱。
+3. 对 `g(f(x))`，在需要显式续接时表达为 `fCps(x, value -> gCps(value, next))`；保留 Java 从左到右的求值顺序。每个正常完成的分支调用一次 `next`，计算失败不调用；异常沿既有契约传播，不捕获 `next` 的异常再尝试调用它。
+4. 同步 CPS 仍在当前调用栈执行；延迟或异步 continuation 必须明确调用次数、完成 / 失败 / 取消语义，以及执行线程。已有 `CompletionStage` 时，普通结果用 `thenApply`，返回另一个 stage 时用 `thenCompose`；不另造一套回调协议。
+5. 不让延迟 continuation 越过原有 `try-with-resources` 的资源有效期，不假设 Spring 事务或线程上下文会随回调传播。Java 不保证尾调用优化；深递归优先循环或显式栈，只有确需可暂停步进时才考虑 trampoline，并评估分配成本。
+
+### 同步变换示例
+
+以下并列展示直接风格与 CPS 风格，不要求生产代码保留两套实现；示例省略所在类和 import。
+
+```java
+static BigDecimal payable(BigDecimal total, BigDecimal discount) {
+    return total.subtract(discount).max(BigDecimal.ZERO);
+}
+
+static <R> R payableCps(BigDecimal total, BigDecimal discount,
+                        Function<BigDecimal, R> next) {
+    return next.apply(total.subtract(discount).max(BigDecimal.ZERO));
+}
+```
+
+调用方把后续格式化传入，而不是先取回金额再格式化：
+
+```java
+String label = payableCps(total, discount, amount -> "应付：" + amount.toPlainString());
+```
+
+仅这一步格式化时，直接调用 `payable` 更简单；示例用于说明变换，不作为强制重构模板。验收比较直接风格与 CPS 的结果、求值及副作用顺序、continuation 调用次数和异常传播；异步场景另验证失败、取消及上下文边界。
+
 ## 泛型
 
 泛型参数显式声明；可复用的工具方法优先有界泛型（`<T extends Identifiable>`）。
